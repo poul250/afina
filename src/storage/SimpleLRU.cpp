@@ -1,3 +1,4 @@
+#include <iostream>
 #include "SimpleLRU.h"
 
 namespace Afina {
@@ -6,7 +7,23 @@ namespace Backend {
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value)
 {
-    return _lru_index.count(key) == 0 ? PutIfAbsent(key, value) : Set(key, value);
+    if (key.size() + value.size() < _max_size) {
+        auto it = _lru_index.find(key);
+        if (it == _lru_index.end()) {
+            FreeEnoughMemory(key.size() + value.size());
+            AddNode(key, value);
+        } else {
+            lru_node & node = it->second;
+            MoveInHead(node);
+            FreeEnoughMemory(value.size() - node.value.size());
+
+            _size += value.size() - node.value.size();
+            node.value = value;
+        }
+        return true;
+    }
+    // return _lru_index.count(key) == 0 ? PutIfAbsent(key, value) : Set(key, value);
+    return false;
 }
 
 // See MapBasedGlobalLockImpl.h

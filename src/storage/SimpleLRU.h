@@ -20,26 +20,26 @@ class SimpleLRU : public Afina::Storage {
 public:
     SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _size(0) {}
 
-    ~SimpleLRU() {
+    virtual ~SimpleLRU() {
         _lru_index.clear();
         FreeEnoughMemory(_max_size);
         // _lru_head.reset(); // TODO: Here is stack overflow
     }
 
     // Implements Afina::Storage interface
-    bool Put(const std::string &key, const std::string &value) override;
+    virtual bool Put(const std::string &key, const std::string &value) override;
 
     // Implements Afina::Storage interface
-    bool PutIfAbsent(const std::string &key, const std::string &value) override;
+    virtual bool PutIfAbsent(const std::string &key, const std::string &value) override;
 
     // Implements Afina::Storage interface
-    bool Set(const std::string &key, const std::string &value) override;
+    virtual bool Set(const std::string &key, const std::string &value) override;
 
     // Implements Afina::Storage interface
-    bool Delete(const std::string &key) override;
+    virtual bool Delete(const std::string &key) override;
 
     // Implements Afina::Storage interface
-    bool Get(const std::string &key, std::string &value) override;
+    virtual bool Get(const std::string &key, std::string &value) override;
 
 private:
     // LRU cache node
