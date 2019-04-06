@@ -80,6 +80,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
 // See Server.h
 void ServerImpl::Stop() {
     running.store(false);
+    this->join();
     shutdown(_server_socket, SHUT_RDWR);
 }
 
