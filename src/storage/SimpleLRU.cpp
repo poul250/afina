@@ -14,10 +14,12 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
             AddNode(key, value);
         } else {
             lru_node & node = it->second;
+            int needSize = static_cast<int>(value.size())
+                            - static_cast<int>(node.value.size());
             MoveInHead(node);
-            FreeEnoughMemory(value.size() - node.value.size());
+            FreeEnoughMemory(needSize);
 
-            _size += value.size() - node.value.size();
+            _size += needSize;
             node.value = value;
         }
         return true;
@@ -29,7 +31,7 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 {
-    if (_lru_index.count(key) == 0 && key.size() + value.size() <= _max_size) {
+    if (_lru_index.count(key) == 0 && key.size() + value.size() < _max_size) {
         FreeEnoughMemory(key.size() + value.size());
         AddNode(key, value);
         return true;
@@ -41,12 +43,14 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 bool SimpleLRU::Set(const std::string &key, const std::string &value)
 {
     auto it = _lru_index.find(key);
-    if (it != _lru_index.end() && key.size() + value.size() <= _max_size) {
+    if (it != _lru_index.end() && key.size() + value.size() < _max_size) {
         lru_node & node = it->second;
+        int needSize = static_cast<int>(value.size())
+        - static_cast<int>(node.value.size());
         MoveInHead(node);
-        FreeEnoughMemory(value.size() - node.value.size());
+        FreeEnoughMemory(needSize);
 
-        _size += value.size() - node.value.size();
+        _size += needSize;
         node.value = value;
         return true;
     }
@@ -131,7 +135,7 @@ void SimpleLRU::MoveInHead(lru_node & node)
 
 void SimpleLRU::FreeEnoughMemory(int size)
 {
-    while (_size + size > _max_size) {
+    while (_size + size >= _max_size) {
         // Delete(_lru_end->key);
         auto del = std::move(_lru_end == _lru_head.get() ?
             _lru_head : _lru_end->prev->next);

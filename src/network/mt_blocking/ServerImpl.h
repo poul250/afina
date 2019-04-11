@@ -57,11 +57,17 @@ private:
     // Thread to run network on
     std::thread _thread;
 
+    // Sockets control
+    std::mutex _socket_mutex;
+    int * _sockets;
+    int addSocket(int socketId);
+    void closeSocket(int index);
+
     // sync
-    std::condition_variable done;
-    std::mutex workers_mutex;
-    uint32_t n_workers;
-    uint32_t max_workers;
+    std::condition_variable _done;
+    std::mutex _workers_mutex;
+    uint32_t _n_workers;
+    uint32_t _max_workers;
 };
 
 } // namespace MTblocking

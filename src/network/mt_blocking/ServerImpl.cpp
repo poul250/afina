@@ -28,10 +28,28 @@ namespace Network {
 namespace MTblocking {
 
 // See Server.h
-ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl) {}
+ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl), _sockets(nullptr) {}
 
 // See Server.h
-ServerImpl::~ServerImpl() {}
+ServerImpl::~ServerImpl() {
+    delete[] _sockets;
+}
+
+int ServerImpl::addSocket(int socketId) {
+    std::unique_lock<std::mutex> lock(_socket_mutex);
+    int index = -_sockets[0];
+    int tmp = _sockets[index];
+    _sockets[index] = socketId;
+    _sockets[0] = tmp;
+    return index;
+}
+
+void ServerImpl::closeSocket(int index) {
+    std::unique_lock<std::mutex> lock(_socket_mutex);
+    close(_sockets[index]);
+    _sockets[index] = _sockets[0];
+    _sockets[0] = -index;
+}
 
 // See Server.h
 void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
@@ -71,9 +89,16 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
         throw std::runtime_error("Socket listen() failed");
     }
 
-    this->n_workers = 0;
-    this->max_workers = n_workers;
+    this->_n_workers = 0;
+    this->_max_workers = n_workers;
     running.store(true);
+
+    _sockets = new int[_max_workers + 1];
+    for (int i = 0; i < _max_workers; ++i) {
+        _sockets[i] = -(i + 1);
+    }
+    _sockets[_max_workers] = 0;
+
     _thread = std::thread(&ServerImpl::OnRun, this);
 }
 
@@ -81,7 +106,15 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
 void ServerImpl::Stop() {
     running.store(false);
     shutdown(_server_socket, SHUT_RDWR);
-    this->join();
+
+    {
+        std::unique_lock<std::mutex> lock(_socket_mutex);
+        for (int i = 1; i <= _max_workers; ++i) {
+            if (_sockets[i] > 0) {
+                shutdown(_sockets[i], SHUT_RD);
+            }
+        }
+    }
 }
 
 // See Server.h
@@ -127,10 +160,10 @@ void ServerImpl::OnRun() {
 
         // TODO: Start new thread and process data from/to connection
         {
-            std::unique_lock<std::mutex> lock(workers_mutex);
-            if (n_workers < max_workers) {
-                n_workers += 1;
-                std::thread worker_thread(&ServerImpl::worker, this, client_socket);
+            std::unique_lock<std::mutex> lock(_workers_mutex);
+            if (_n_workers < _max_workers) {
+                _n_workers += 1;
+                std::thread worker_thread(&ServerImpl::worker, this, addSocket(client_socket));
                 worker_thread.detach();
             } else {
                 static const std::string msg = "SERVER_ERROR too much clients\r\n";
@@ -145,9 +178,9 @@ void ServerImpl::OnRun() {
     // Cleanup on exit...
 
     {
-        std::unique_lock<std::mutex> lock(workers_mutex);
-        while (n_workers > 0) {
-            done.wait(lock);
+        std::unique_lock<std::mutex> lock(_workers_mutex);
+        while (_n_workers > 0) {
+            _done.wait(lock);
         }
     }
     _logger->warn("Network stopped");
@@ -167,7 +200,7 @@ void ServerImpl::worker(int client_socket)
     try {
         int readed_bytes = -1;
         char client_buffer[4096];
-        while ((readed_bytes = read(client_socket, client_buffer, sizeof(client_buffer))) > 0) {
+        while ((readed_bytes = read(_sockets[client_socket], client_buffer, sizeof(client_buffer))) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
             // Single block of data readed from the socket could trigger inside actions a multiple times,
             // for example:
@@ -219,7 +252,7 @@ void ServerImpl::worker(int client_socket)
 
                     // Send response
                     result += "\r\n";
-                    if (send(client_socket, result.data(), result.size(), 0) <= 0) {
+                    if (send(_sockets[client_socket], result.data(), result.size(), 0) <= 0) {
                         throw std::runtime_error("Failed to send response");
                     }
 
@@ -241,19 +274,19 @@ void ServerImpl::worker(int client_socket)
         std::string err = "SERVER_ERROR ";
         err += ex.what();
         err += "\r\n";
-        if (send(client_socket, err.data(), err.size(), 0) <= 0) {
+        if (send(_sockets[client_socket], err.data(), err.size(), 0) <= 0) {
             _logger->error("Failed to write response to client: {}", strerror(errno));
         }
     }
 
     {
-        std::unique_lock<std::mutex> lock(workers_mutex);
-        assert(n_workers > 0);
-        n_workers -= 1;
-        if (!running.load() && n_workers == 0) {
-            done.notify_one();
+        std::unique_lock<std::mutex> lock(_workers_mutex);
+        assert(_n_workers > 0);
+        _n_workers -= 1;
+        if (!running.load() && _n_workers == 0) {
+            _done.notify_all();
         }
-        close(client_socket);
+        closeSocket(client_socket);
     }
 }
 
