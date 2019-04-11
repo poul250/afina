@@ -28,7 +28,10 @@ class Executor {
         kStopped
     };
 
-    Executor(std::string name, int size);
+    Executor(size_t low_watermark = 4,
+             size_t high_watermark = 8,
+             size_t max_queue_size = 16,
+             std::chrono::milliseconds = std::chrono::milliseconds(5000));
     ~Executor();
 
     /**
@@ -87,6 +90,16 @@ private:
      * Vector of actual threads that perorm execution
      */
     std::vector<std::thread> threads;
+
+    size_t n_threads;
+
+    /**
+    * Executor parameters
+    */
+    size_t low_watermark;
+    size_t high_watermark;
+    size_t max_queue_size;
+    std::chrono::milliseconds idle_time;
 
     /**
      * Task queue
