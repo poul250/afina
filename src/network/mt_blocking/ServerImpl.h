@@ -5,6 +5,7 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <list>
 
 #include <afina/network/Server.h>
 
@@ -59,9 +60,7 @@ private:
 
     // Sockets control
     std::mutex _socket_mutex;
-    int * _sockets;
-    int addSocket(int socketId);
-    void closeSocket(int index);
+    std::list<int> _sockets;
 
     // sync
     std::condition_variable _done;
